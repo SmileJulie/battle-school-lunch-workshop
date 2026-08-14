@@ -3,6 +3,11 @@
 이 문서는 AI 코딩 에이전트가 이 저장소에서 작업할 때 따라야 할 프로젝트 규칙이다.
 사람을 위한 개요와 기여 절차는 `README.md`와 `CONTRIBUTING.md`를 우선 참고한다.
 
+> [!NOTE]
+> 아래 저장소 구조와 명령 중 일부는 프론트엔드·백엔드 애플리케이션이 구현되기
+> 전을 기준으로 작성되었다. 앱 구현이 진행되면 실제 디렉터리, 파일, 스크립트와
+> 도구 이름에 맞춰 이 문서 전체(구조, 명령, 기술 스택 표)를 반드시 함께 갱신한다.
+
 ## 프로젝트 개요
 
 급식배틀은 NEIS 공개 API를 이용해 학교를 검색하고, 선택한 날짜 범위의 중식
@@ -11,9 +16,14 @@
 - 프론트엔드는 React와 TypeScript로 사용자 인터페이스를 제공한다.
 - 백엔드는 Python으로 프론트엔드 API와 NEIS 연동을 제공한다.
 - 프론트엔드는 NEIS API를 직접 호출하지 않고 백엔드 API만 호출한다.
-- NEIS 요청과 응답의 계약 원본은 `data/openapi.json`이다.
+- NEIS 외부 API 계약의 단일 원본은 `data/openapi.json`이고, 프론트엔드·백엔드
+  사이 내부 API 계약의 단일 원본은 `src/openapi.json`이다. 두 계약을 혼동하지
+  않는다.
 - 기본 사용자 흐름은 학교 검색, 학교 선택, 날짜 범위 선택, 급식 결과 표시 순서다.
-- 급식 조회는 중식(`MMEAL_SC_CODE=2`)을 기준으로 한다.
+- 급식 조회는 중식(`MMEAL_SC_CODE=2`)을 기준으로 하며 조회 기간은 시작일과
+  종료일을 포함해 최대 31일이다.
+- 제품 요구사항과 사용자 흐름의 세부 사항은 `PRD.md`, 기술 구조와 API 계약의
+  세부 사항은 `TRD.md`를 기준으로 한다.
 
 ## 저장소 구조
 
@@ -27,7 +37,7 @@
 │   │   └── integration/     API 및 NEIS 클라이언트 통합 테스트
 │   └── Dockerfile           백엔드 컨테이너 정의
 ├── data/
-│   ├── openapi.json         NEIS API 계약의 단일 원본
+│   ├── openapi.json         NEIS 외부 API 계약의 단일 원본
 │   └── *.xlsx               원본 NEIS 명세 자료
 ├── e2e/                     브라우저 E2E 테스트
 ├── frontend/                React + TypeScript 프론트엔드
@@ -35,6 +45,8 @@
 │   ├── tests/               프론트엔드 통합 테스트
 │   ├── package.json         npm 스크립트와 의존성
 │   └── Dockerfile           프론트엔드 컨테이너 정의
+├── src/
+│   └── openapi.json         프론트엔드-백엔드 내부 API 계약의 단일 원본
 └── compose.yaml             프론트엔드와 백엔드 오케스트레이션
 ```
 
@@ -75,6 +87,15 @@
 
 명령은 저장소 루트에서 시작하며, 각 매니페스트가 존재하는 경우에 실행한다.
 
+### 환경 변수
+
+- 저장소 루트에 `.env.example`이 있으면 이를 복사해 `.env`를 만든다. 백엔드에
+  필요한 전체 변수 목록(`NEIS_API_KEY`, `NEIS_BASE_URL`, `NEIS_TIMEOUT_SECONDS`,
+  `BACKEND_ALLOWED_ORIGINS` 등)은 `TRD.md`의 설정 및 보안 절을 기준으로 한다.
+  `.env`는 커밋하지 않는다.
+- 자동화 테스트는 NEIS API 키 없이 통과해야 한다. 로컬에서 실제 NEIS 데이터로
+  수동 검증할 때만 `.env`의 키를 사용한다.
+
 ### 프론트엔드
 
 ```sh
@@ -107,6 +128,8 @@ docker compose up --build
 
 종료할 때는 `docker compose down`을 사용한다. Compose 서비스 간 통신에는 서비스
 이름을 사용하고, 컨테이너 내부에서 `localhost`로 다른 서비스를 참조하지 않는다.
+Compose 파일 이름은 `compose.yaml`, `compose.yml`, `docker-compose.yaml`,
+`docker-compose.yml` 중 저장소에 실제로 존재하는 파일을 기준으로 한다.
 
 ## 빌드와 품질 검사
 
@@ -127,24 +150,22 @@ cd ..
 docker compose config
 ```
 
-포맷팅, 린트와 타입 검사 스크립트가 구성되어 있으면 각각 다음 형태로 실행한다.
+포맷팅, 린트와 타입 검사 스크립트가 구성되어 있으면 실행한다.
 
 ```sh
 cd frontend
 npm run format
 npm run lint
 npm run typecheck
-
-cd ../backend
-python -m <configured-formatter> --check .
-python -m <configured-linter> check .
-python -m <configured-type-checker>
 ```
 
-`<configured-...>` 자리는 `backend/pyproject.toml`에 실제 설정된 도구로 대체한다.
-도구가 구성되지 않았다면 임의로 설치하거나 명령을 통과시키기 위한 빈 스크립트를
-추가하지 않는다. 도구 도입 자체가 작업 범위라면 설정, 의존성, CI와 이 문서를 함께
-갱신한다.
+백엔드는 `python -m pip show <tool>` 또는 `backend/pyproject.toml`의
+`[tool.*]`/`[dependency-groups]` 설정을 확인해 실제로 설치된 포맷터, 린터, 타입
+검사기 명령을 그대로 사용한다(예: 프로젝트가 ruff와 mypy를 채택했다면
+`uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy .`). 이 문서에
+없는 명령을 추측해서 만들지 않는다. 도구가 아직 구성되지 않았다면 임의로 설치하거나
+명령을 통과시키기 위한 빈 스크립트를 추가하지 않는다. 도구 도입 자체가 작업
+범위라면 설정, 의존성, CI와 이 문서를 함께 갱신한다.
 
 ## 코딩 지침
 
@@ -175,15 +196,27 @@ python -m <configured-type-checker>
 
 ## API 계약
 
-- `data/openapi.json`은 NEIS 학교 및 급식 API의 단일 계약 원본이다.
+- `data/openapi.json`은 NEIS 학교 및 급식 API의 단일 계약 원본이고,
+  `src/openapi.json`은 프론트엔드-백엔드 내부 API의 단일 계약 원본이다. 백엔드만
+  `data/openapi.json`으로 NEIS와 통신하며, 프론트엔드는 `src/openapi.json`으로
+  정의된 내부 API만 호출한다.
 - NEIS 연동을 변경하기 전에 해당 경로, 파라미터, 필수 여부, 응답과 오류 스키마를
   확인한다.
 - `ATPT_OFCDC_SC_CODE`와 `SD_SCHUL_CODE`를 임의 값으로 대체하지 않는다.
-- 급식 조회에는 중식 코드 `2`를 사용한다.
+- 급식 조회에는 중식 코드 `2`를 사용하고, 조회 기간은 시작일과 종료일을 포함해
+  최대 31일로 제한한다. 학교 검색 결과는 최대 20개까지 반환하고 초과분은
+  `hasMore` 플래그로 안내하며 서버가 임의로 추가 페이지를 자동 조회하지 않는다.
+- `/health`는 인증이나 NEIS 호출 없이 프로세스 상태만 확인하는 가벼운
+  엔드포인트로 유지하고, API 키나 내부 진단 정보를 응답에 포함하지 않는다.
 - 계약에서 생성되는 클라이언트, 타입 또는 문서는 직접 수정하지 않는다. 원본 명세나
   생성 설정을 수정한 뒤 프로젝트의 생성 명령을 다시 실행한다.
-- 프론트엔드와 백엔드 사이의 내부 API 계약을 변경하면 양쪽 구현과 관련 통합/E2E
-  테스트를 같은 변경에서 갱신한다.
+- 프론트엔드와 백엔드 사이의 내부 API 계약(`src/openapi.json`)을 변경하면 양쪽
+  구현과 관련 통합/E2E 테스트를 같은 변경에서 갱신한다.
+- NEIS 목록 조회에 `pIndex`/`pSize` 페이지네이션 파라미터가 필요하면 명세에 정의된
+  대로 전달하고, 응답의 전체 개수 필드를 신뢰해 다음 페이지 존재 여부를 판단한다.
+- NEIS가 요청 건수·트래픽 제한 초과로 400 오류를 반환하면 사용자에게 재시도를
+  안내하는 명확한 오류로 전달한다. 재시도는 멱등적인 조회에 한해 제한된 횟수와
+  지수 백오프로만 적용하고, 입력 오류나 인증 오류에는 재시도하지 않는다.
 
 ## 테스트
 
@@ -215,6 +248,11 @@ python -m <configured-type-checker>
   픽스처에 포함하지 않는다.
 - 사용자 입력과 외부 API 응답을 검증하고, 내부 예외나 시크릿을 클라이언트에
   노출하지 않는다.
+- 백엔드는 `BACKEND_ALLOWED_ORIGINS` 환경 변수로 허용 오리진 목록을 명시적으로
+  관리하는 CORS 정책을 적용한다. 로컬 개발 오리진(예: 프론트엔드 개발 서버 주소)만
+  허용하고 와일드카드(`*`)로 모든 오리진을 허용하지 않는다.
+- 요청/응답 전체 본문이나 인증 헤더를 로그에 남기지 않는다. 로그에는 요청 식별자,
+  경로, 상태 코드 등 디버깅에 필요한 최소 정보만 남긴다.
 - 락 파일, 빌드 산출물, 커버리지 결과와 OpenAPI 생성 파일을 손으로 편집하지 않는다.
 - 의존성 업데이트는 목적을 분명히 하고 관련 락 파일과 검증 결과를 포함한다.
 
@@ -229,6 +267,7 @@ python -m <configured-type-checker>
 ## Git 커밋과 Pull Request
 
 - 기존 사용자 변경을 덮어쓰거나 관련 없는 파일을 되돌리지 않는다.
+- 브랜치는 `feat/`, `fix/`, `docs/` 중 변경 성격에 맞는 접두사를 사용해 생성한다.
 - 한 커밋은 하나의 논리적 변경에 집중하고 Conventional Commits 형식(`feat:`,
   `fix:`, `docs:`, `test:`, `refactor:`, `chore:`)을 사용한다.
 - PR은 `main`을 대상으로 하며 한 가지 변경 사항에 집중한다.
