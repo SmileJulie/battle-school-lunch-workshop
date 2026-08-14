@@ -3,6 +3,11 @@
 이 문서는 AI 코딩 에이전트가 이 저장소에서 작업할 때 따라야 할 프로젝트 규칙이다.
 사람을 위한 개요와 기여 절차는 `README.md`와 `CONTRIBUTING.md`를 우선 참고한다.
 
+> [!NOTE]
+> 아래 저장소 구조와 명령 중 일부는 프론트엔드·백엔드 애플리케이션이 구현되기
+> 전을 기준으로 작성되었다. 앱 구현이 진행되면 실제 디렉터리, 파일, 스크립트와
+> 도구 이름에 맞춰 이 문서 전체(구조, 명령, 기술 스택 표)를 반드시 함께 갱신한다.
+
 ## 프로젝트 개요
 
 급식배틀은 NEIS 공개 API를 이용해 학교를 검색하고, 선택한 날짜 범위의 중식
@@ -75,6 +80,13 @@
 
 명령은 저장소 루트에서 시작하며, 각 매니페스트가 존재하는 경우에 실행한다.
 
+### 환경 변수
+
+- 저장소 루트에 `.env.example`이 있으면 이를 복사해 `.env`를 만들고
+  `NEIS_API_KEY`를 실제 값으로 채운다. `.env`는 커밋하지 않는다.
+- 자동화 테스트는 NEIS API 키 없이 통과해야 한다. 로컬에서 실제 NEIS 데이터로
+  수동 검증할 때만 `.env`의 키를 사용한다.
+
 ### 프론트엔드
 
 ```sh
@@ -127,24 +139,22 @@ cd ..
 docker compose config
 ```
 
-포맷팅, 린트와 타입 검사 스크립트가 구성되어 있으면 각각 다음 형태로 실행한다.
+포맷팅, 린트와 타입 검사 스크립트가 구성되어 있으면 실행한다.
 
 ```sh
 cd frontend
 npm run format
 npm run lint
 npm run typecheck
-
-cd ../backend
-python -m <configured-formatter> --check .
-python -m <configured-linter> check .
-python -m <configured-type-checker>
 ```
 
-`<configured-...>` 자리는 `backend/pyproject.toml`에 실제 설정된 도구로 대체한다.
-도구가 구성되지 않았다면 임의로 설치하거나 명령을 통과시키기 위한 빈 스크립트를
-추가하지 않는다. 도구 도입 자체가 작업 범위라면 설정, 의존성, CI와 이 문서를 함께
-갱신한다.
+백엔드는 `python -m pip show <tool>` 또는 `backend/pyproject.toml`의
+`[tool.*]`/`[dependency-groups]` 설정을 확인해 실제로 설치된 포맷터, 린터, 타입
+검사기 명령을 그대로 사용한다(예: 프로젝트가 ruff와 mypy를 채택했다면
+`uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy .`). 이 문서에
+없는 명령을 추측해서 만들지 않는다. 도구가 아직 구성되지 않았다면 임의로 설치하거나
+명령을 통과시키기 위한 빈 스크립트를 추가하지 않는다. 도구 도입 자체가 작업
+범위라면 설정, 의존성, CI와 이 문서를 함께 갱신한다.
 
 ## 코딩 지침
 
@@ -215,6 +225,8 @@ python -m <configured-type-checker>
   픽스처에 포함하지 않는다.
 - 사용자 입력과 외부 API 응답을 검증하고, 내부 예외나 시크릿을 클라이언트에
   노출하지 않는다.
+- 요청/응답 전체 본문이나 인증 헤더를 로그에 남기지 않는다. 로그에는 요청 식별자,
+  경로, 상태 코드 등 디버깅에 필요한 최소 정보만 남긴다.
 - 락 파일, 빌드 산출물, 커버리지 결과와 OpenAPI 생성 파일을 손으로 편집하지 않는다.
 - 의존성 업데이트는 목적을 분명히 하고 관련 락 파일과 검증 결과를 포함한다.
 
@@ -229,6 +241,7 @@ python -m <configured-type-checker>
 ## Git 커밋과 Pull Request
 
 - 기존 사용자 변경을 덮어쓰거나 관련 없는 파일을 되돌리지 않는다.
+- 브랜치는 `feat/`, `fix/`, `docs/` 중 변경 성격에 맞는 접두사를 사용해 생성한다.
 - 한 커밋은 하나의 논리적 변경에 집중하고 Conventional Commits 형식(`feat:`,
   `fix:`, `docs:`, `test:`, `refactor:`, `chore:`)을 사용한다.
 - PR은 `main`을 대상으로 하며 한 가지 변경 사항에 집중한다.
