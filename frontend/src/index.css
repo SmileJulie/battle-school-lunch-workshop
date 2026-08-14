@@ -1,0 +1,28 @@
+:root {
+  color: #242424;
+  background: #f5f7fb;
+  font-family:
+    "Segoe UI",
+    "Noto Sans KR",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgb(15 108 189 / 16%), transparent 34rem),
+    linear-gradient(180deg, #f7fbff 0%, #f5f7fb 40%, #eef3f8 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
