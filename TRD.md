@@ -13,6 +13,7 @@ API 계약, 데이터 흐름, 오류 처리, 실행 환경 및 테스트 전략�
 4. 프론트엔드와 백엔드 사이의 내부 API 계약은 `src/openapi.json`으로 정의한다.
 5. NEIS API 키는 백엔드 런타임 환경 변수로만 주입하고 브라우저에 노출하지 않는다.
 6. 프론트엔드와 백엔드는 Docker 이미지로 빌드하고 Docker Compose로 함께 실행한다.
+7. MCP 서버는 공식 Python MCP SDK 1.x를 사용하고 백엔드 API와 독립적으로 실행한다.
 
 이슈의 “프론트엔드가 `data/openapi.json` 명세를 별도 클라이언트 코드로 구현”한다는
 요구는 NEIS 데이터 구조를 이해하고 내부 모델에 반영하라는 의미로 해석한다.
@@ -33,6 +34,16 @@ React + TypeScript 프론트엔드
     | src/openapi.json 계약
     v
 Python 백엔드 API
+    |
+    | data/openapi.json 계약 + 서버 측 API 키
+    v
+NEIS 공개 API
+
+MCP 클라이언트
+    |
+    | Streamable HTTP
+    v
+Python MCP 서버
     |
     | data/openapi.json 계약 + 서버 측 API 키
     v
@@ -66,7 +77,8 @@ NEIS 공개 API
 │   ├── pyproject.toml
 │   └── Dockerfile
 ├── src/
-│   └── openapi.json          # 프론트엔드-백엔드 내부 API 계약
+│   ├── openapi.json          # 프론트엔드-백엔드 내부 API 계약
+│   └── mcp/                  # 공식 MCP SDK 기반 Streamable HTTP 서버
 ├── data/
 │   └── openapi.json          # NEIS 외부 API 계약
 ├── e2e/
@@ -143,6 +155,19 @@ NEIS 클라이언트는 다음 두 작업만 외부 API에 수행한다.
 NEIS 응답의 `schoolInfo` 또는 `mealServiceDietInfo` 배열과 최상위 `RESULT` 형식을
 모두 처리해야 한다. 결과 없음 코드는 빈 목록으로 변환할 수 있지만 인증, 입력,
 트래픽, 서버 및 데이터베이스 오류는 성공 또는 빈 결과로 변환하지 않는다.
+
+### 5.4 MCP 서버
+
+- `src/mcp`에 백엔드 API와 독립적인 Python 패키지로 구현한다.
+- 공식 MCP Python SDK 1.x의 `FastMCP`를 사용하고 Streamable HTTP 엔드포인트를
+  제공한다.
+- MCP 도구는 백엔드 HTTP API를 경유하지 않고 `data/openapi.json`에 정의된 NEIS
+  학교 및 급식 API를 직접 호출한다.
+- 제공 도구는 `search_schools`와 `get_lunch_menus` 두 개로 제한한다.
+- 도구 응답은 앱 내부 모델과 같은 필드 의미를 사용하되 MCP 클라이언트가 상태를
+  판단할 수 있도록 `status`, `message`와 구조화된 결과를 포함한다.
+- 입력 오류와 NEIS 오류는 MCP 도구 오류로 반환하며 API 키, 전체 URL, 내부 예외
+  메시지 또는 스택 추적을 포함하지 않는다.
 
 ## 6. 내부 API 계약
 
@@ -268,6 +293,83 @@ GET /health
   호출하지 않는다.
 - Docker Compose의 백엔드 헬스 체크는 이 엔드포인트를 사용한다.
 
+### 6.5 MCP 도구 계약
+
+MCP 서버는 `http://localhost:8001/mcp`에서 Streamable HTTP로 동작한다.
+
+#### `search_schools`
+
+입력:
+
+```json
+{ "query": "서울" }
+```
+
+응답:
+
+```json
+{
+  "status": "success",
+  "message": null,
+  "schools": [
+    {
+      "officeCode": "B10",
+      "schoolCode": "7010057",
+      "name": "서울고등학교",
+      "officeName": "서울특별시교육청",
+      "regionName": "서울특별시",
+      "schoolType": "고등학교"
+    }
+  ],
+  "hasMore": false
+}
+```
+
+결과가 없으면 `status`는 `empty`, `schools`는 빈 배열이며 입력 오류는 MCP 도구
+오류로 반환한다.
+
+#### `get_lunch_menus`
+
+입력:
+
+```json
+{
+  "officeCode": "B10",
+  "schoolCode": "7010057",
+  "fromDate": "2026-08-14",
+  "toDate": "2026-08-14"
+}
+```
+
+응답:
+
+```json
+{
+  "status": "success",
+  "message": null,
+  "school": {
+    "officeCode": "B10",
+    "schoolCode": "7010057"
+  },
+  "from": "2026-08-14",
+  "to": "2026-08-14",
+  "meals": [
+    {
+      "date": "2026-08-14",
+      "mealType": "중식",
+      "dishes": ["쌀밥", "미역국"],
+      "calories": "650.0 Kcal",
+      "nutrition": null,
+      "origin": null,
+      "servings": null
+    }
+  ]
+}
+```
+
+급식 정보가 없으면 `status`는 `empty`, `meals`는 빈 배열이다. 입력 오류, NEIS
+오류와 타임아웃은 민감 정보를 제거한 MCP 도구 오류로 반환한다.
+
 ## 7. 데이터 흐름
 
 ### 7.1 학교 검색
@@ -311,6 +413,9 @@ GET /health
 | `NEIS_BASE_URL` | NEIS 기본 URL | 백엔드 컨테이너만 |
 | `NEIS_TIMEOUT_SECONDS` | 외부 요청 타임아웃 | 백엔드 컨테이너만 |
 | `BACKEND_ALLOWED_ORIGINS` | 허용 프론트엔드 Origin | 백엔드 컨테이너만 |
+| `MCP_HOST` | MCP 서버 바인드 호스트 | MCP 컨테이너만 |
+| `MCP_PORT` | MCP 서버 포트 | MCP 컨테이너만 |
+| `MCP_PATH` | Streamable HTTP MCP 경로 | MCP 컨테이너만 |
 
 - 실제 값이 든 `.env` 파일은 버전 관리하지 않는다.
 - 예시 설정에는 안전한 자리표시자만 사용한다.
@@ -321,7 +426,7 @@ GET /health
 
 ## 10. Docker Compose 구성
 
-`compose.yaml`은 최소 `frontend`와 `backend` 서비스를 정의한다.
+`compose.yaml`은 최소 `frontend`, `backend`, `mcp` 서비스를 정의한다.
 
 ### frontend 서비스
 
@@ -337,6 +442,13 @@ GET /health
 - API 키와 외부 URL은 환경 변수로 주입한다.
 - 서비스 준비 상태를 판단할 수 있는 헬스 체크 엔드포인트를 제공한다.
 
+### mcp 서비스
+
+- `src/mcp/Dockerfile`로 공식 MCP SDK 기반 서버를 빌드한다.
+- Streamable HTTP 엔드포인트를 외부에서 접근할 수 있도록 `8001` 포트를 공개한다.
+- `NEIS_API_KEY`, `NEIS_BASE_URL`, `NEIS_TIMEOUT_SECONDS`를 서버 환경 변수로 주입한다.
+- 프론트엔드 또는 백엔드에 의존하지 않고 독립적으로 시작할 수 있어야 한다.
+
 프론트엔드 컨테이너 또는 개발 프록시는 Compose 내부 통신 시 `localhost`가 아닌
 `backend` 서비스 이름을 사용한다. 시작 순서가 필요하면 단순 프로세스 시작이
 아니라 백엔드 헬스 체크를 기준으로 의존성을 정의한다. `docker compose up --build`
@@ -351,6 +463,8 @@ GET /health
   민감 쿼리는 기록하지 않는다.
 - 외부 연결 실패, 타임아웃, NEIS 오류 코드, 응답 검증 실패를 구분한다.
 - 광범위한 예외 처리로 오류를 빈 배열 또는 성공 응답으로 바꾸지 않는다.
+- MCP 도구 오류는 안전한 오류 코드와 사용자 메시지로 제한하고 민감한 원본 예외를
+  클라이언트에 전달하지 않는다.
 - 재시도는 멱등적인 조회에 한해 제한된 횟수와 지수 백오프로 적용할 수 있으며,
   입력·인증 오류에는 적용하지 않는다.
 
@@ -417,6 +531,13 @@ GET /health
 검증한다. E2E 환경에서도 NEIS 호출은 통제된 스텁 또는 모킹 서버로 대체해 테스트가
 네트워크와 실제 데이터 변화에 의존하지 않게 한다.
 
+### 12.5 MCP 테스트
+
+- MCP 서버의 도구 목록에 `search_schools`와 `get_lunch_menus`가 등록되는지 검증한다.
+- 도구 호출 시 입력 정규화, 날짜 검증, 중식 코드 `2` 적용과 NEIS 파라미터를 검증한다.
+- 학교 검색 결과 없음, 급식 정보 없음, NEIS 오류 및 타임아웃이 안전한 응답이나 도구
+  오류로 매핑되는지 검증한다.
+
 ## 13. 기술 인수 조건
 
 - React 프론트엔드는 내부 백엔드 API만 호출하며 NEIS 호출 코드나 API 키를
@@ -431,6 +552,8 @@ GET /health
 - 중식 요청에는 항상 `MMEAL_SC_CODE=2`가 적용된다.
 - Docker Compose로 프론트엔드와 백엔드를 빌드·실행하고 서비스 이름으로 통신하며
   `/health`를 백엔드 준비 상태 확인에 사용한다.
+- 공식 MCP SDK 1.x 기반 Streamable HTTP MCP 서버가 Compose에 포함되고, MCP
+  클라이언트가 도구 목록 조회와 도구 호출을 수행할 수 있다.
 - 프론트엔드 통합 테스트, 백엔드 단위·통합 테스트 및 핵심 흐름 E2E 테스트가
   자동화되어 통과한다.
 - 검색 결과 없음, 잘못된 날짜 범위, 급식 정보 없음과 외부 서비스 오류가 서로

@@ -54,9 +54,10 @@ NEIS 공개 API를 활용해 초중고 급식 메뉴를 조회하고 AI 에이�
 | `data/` | API 명세 작성에 사용하는 원본 데이터 |
 | `docs/` | 단계별 워크숍 가이드                 |
 | `src/openapi.json` | 프론트엔드와 백엔드 사이의 내부 API 계약 |
+| `src/mcp/` | NEIS 학교·중식 조회 MCP 서버 |
 | `frontend/` | Fluent UI 기반 React + TypeScript 프론트엔드 |
 | `backend/` | FastAPI 기반 NEIS 연동 백엔드 |
-| `compose.yaml` | 프론트엔드와 백엔드 Docker Compose 구성 |
+| `compose.yaml` | 프론트엔드, 백엔드, MCP 서버 Docker Compose 구성 |
 
 ## 로컬 실행
 
@@ -68,6 +69,21 @@ NEIS 공개 API를 활용해 초중고 급식 메뉴를 조회하고 AI 에이�
 cd backend
 python -m pip install -e ".[dev]"
 uvicorn app.main:app --reload --app-dir src
+```
+
+MCP 서버는 공식 Python MCP SDK 1.x를 사용하며 Streamable HTTP 엔드포인트
+`http://localhost:8001/mcp`를 제공합니다.
+
+```sh
+cd src/mcp
+python -m pip install -e ".[dev]"
+python -m battle_lunch_mcp.server
+```
+
+MCP Inspector로 확인하려면 MCP 서버 실행 후 다음 명령을 사용합니다.
+
+```sh
+npx @modelcontextprotocol/inspector http://localhost:8001/mcp
 ```
 
 ```sh
