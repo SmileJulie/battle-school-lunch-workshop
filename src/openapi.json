@@ -1,0 +1,190 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "급식 배틀 내부 API",
+    "version": "1.0.0",
+    "description": "프론트엔드와 FastAPI 백엔드 사이의 학교 검색 및 중식 조회 API 계약입니다."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "헬스 체크",
+        "responses": {
+          "200": {
+            "description": "프로세스가 요청을 처리할 수 있음",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schools": {
+      "get": {
+        "summary": "학교 검색",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 100 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "학교 검색 결과",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SchoolSearchResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "502": { "$ref": "#/components/responses/ErrorResponse" },
+          "503": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/meals": {
+      "get": {
+        "summary": "중식 조회",
+        "parameters": [
+          {
+            "name": "officeCode",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^[A-Z0-9]{1,20}$" }
+          },
+          {
+            "name": "schoolCode",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^[A-Z0-9]{1,20}$" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "date" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "중식 조회 결과",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MealSearchResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "502": { "$ref": "#/components/responses/ErrorResponse" },
+          "503": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "ErrorResponse": {
+        "description": "공통 오류",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status"],
+        "properties": { "status": { "type": "string", "enum": ["ok"] } }
+      },
+      "School": {
+        "type": "object",
+        "required": ["officeCode", "schoolCode", "name", "officeName", "regionName", "schoolType"],
+        "properties": {
+          "officeCode": { "type": "string" },
+          "schoolCode": { "type": "string" },
+          "name": { "type": "string" },
+          "officeName": { "type": "string" },
+          "regionName": { "type": "string" },
+          "schoolType": { "type": "string" }
+        }
+      },
+      "SchoolSearchResponse": {
+        "type": "object",
+        "required": ["schools", "hasMore"],
+        "properties": {
+          "schools": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/School" }
+          },
+          "hasMore": { "type": "boolean" }
+        }
+      },
+      "SchoolRef": {
+        "type": "object",
+        "required": ["officeCode", "schoolCode"],
+        "properties": {
+          "officeCode": { "type": "string" },
+          "schoolCode": { "type": "string" }
+        }
+      },
+      "Meal": {
+        "type": "object",
+        "required": ["date", "mealType", "dishes"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "mealType": { "type": "string", "enum": ["중식"] },
+          "dishes": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "calories": { "type": "string", "nullable": true },
+          "nutrition": { "type": "string", "nullable": true },
+          "origin": { "type": "string", "nullable": true },
+          "servings": { "type": "integer", "nullable": true }
+        }
+      },
+      "MealSearchResponse": {
+        "type": "object",
+        "required": ["school", "from", "to", "meals"],
+        "properties": {
+          "school": { "$ref": "#/components/schemas/SchoolRef" },
+          "from": { "type": "string", "format": "date" },
+          "to": { "type": "string", "format": "date" },
+          "meals": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Meal" }
+          }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/ApiError" }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "required": ["code", "message", "requestId"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "requestId": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -53,8 +53,52 @@ NEIS 공개 API를 활용해 초중고 급식 메뉴를 조회하고 AI 에이�
 |---------|--------------------------------------|
 | `data/` | API 명세 작성에 사용하는 원본 데이터 |
 | `docs/` | 단계별 워크숍 가이드                 |
+| `src/openapi.json` | 프론트엔드와 백엔드 사이의 내부 API 계약 |
+| `frontend/` | Fluent UI 기반 React + TypeScript 프론트엔드 |
+| `backend/` | FastAPI 기반 NEIS 연동 백엔드 |
+| `compose.yaml` | 프론트엔드와 백엔드 Docker Compose 구성 |
 
-프론트엔드, 백엔드 및 배포 관련 소스는 워크숍을 진행하면서 참가자의 저장소에 생성됩니다.
+## 로컬 실행
+
+프론트엔드는 백엔드 내부 API만 호출하며 NEIS API 키는 백엔드 환경 변수로만 전달합니다.
+백엔드는 기본적으로 `backend/.env`를 읽고, 다른 경로의 `.env`를 쓰려면
+`NEIS_ENV_FILE` 또는 실행 스크립트의 env file 옵션으로 지정합니다.
+
+```sh
+cd backend
+python -m pip install -e ".[dev]"
+uvicorn app.main:app --reload --app-dir src
+```
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+또는 저장소 루트에서 스크립트로 백엔드와 프론트엔드를 한 번에 실행할 수 있습니다.
+
+```powershell
+.\scripts\start.ps1
+```
+
+```powershell
+.\scripts\start.ps1 -EnvFile "C:\path\to\backend\.env"
+```
+
+```sh
+bash ./scripts/start.sh
+```
+
+```sh
+bash ./scripts/start.sh --env-file /path/to/backend/.env
+```
+
+전체 애플리케이션은 저장소 루트에서 다음 명령으로 실행할 수 있습니다.
+
+```sh
+docker compose up --build
+```
 
 ## 추가 학습 자료
 
