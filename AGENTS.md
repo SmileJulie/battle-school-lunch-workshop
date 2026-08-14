@@ -15,6 +15,8 @@
 
 - 프론트엔드는 React와 TypeScript로 사용자 인터페이스를 제공한다.
 - 백엔드는 Python으로 프론트엔드 API와 NEIS 연동을 제공한다.
+- MCP 서버는 공식 Python MCP SDK 1.x로 AI 에이전트용 학교 검색 및 중식 조회 도구를
+  제공한다.
 - 프론트엔드는 NEIS API를 직접 호출하지 않고 백엔드 API만 호출한다.
 - NEIS 외부 API 계약의 단일 원본은 `data/openapi.json`이고, 프론트엔드·백엔드
   사이 내부 API 계약의 단일 원본은 `src/openapi.json`이다. 두 계약을 혼동하지
@@ -46,8 +48,9 @@
 │   ├── package.json         npm 스크립트와 의존성
 │   └── Dockerfile           프론트엔드 컨테이너 정의
 ├── src/
-│   └── openapi.json         프론트엔드-백엔드 내부 API 계약의 단일 원본
-└── compose.yaml             프론트엔드와 백엔드 오케스트레이션
+│   ├── openapi.json         프론트엔드-백엔드 내부 API 계약의 단일 원본
+│   └── mcp/                 공식 MCP SDK 기반 Streamable HTTP 서버
+└── compose.yaml             프론트엔드, 백엔드, MCP 서버 오케스트레이션
 ```
 
 구현 과정에서 이름이 달라진 경로가 있다면 실제 디렉터리와 매니페스트를 기준으로
@@ -64,6 +67,8 @@
 | 백엔드 | Python 3.12, `pyproject.toml`, pip editable install |
 | 백엔드 품질 | `pyproject.toml`에 설정된 포맷터, 린터, 타입 검사기 |
 | 백엔드 테스트 | pytest |
+| MCP 서버 | Python 3.12, 공식 MCP SDK 1.x, Streamable HTTP |
+| MCP 서버 테스트 | pytest |
 | E2E | 프로젝트에 설정된 브라우저 E2E 테스트 러너 |
 | 컨테이너 | Docker, Docker Compose |
 
@@ -91,7 +96,8 @@
 
 - 저장소 루트에 `.env.example`이 있으면 이를 복사해 `.env`를 만든다. 백엔드에
   필요한 전체 변수 목록(`NEIS_API_KEY`, `NEIS_BASE_URL`, `NEIS_TIMEOUT_SECONDS`,
-  `BACKEND_ALLOWED_ORIGINS` 등)은 `TRD.md`의 설정 및 보안 절을 기준으로 한다.
+  `BACKEND_ALLOWED_ORIGINS`, `MCP_HOST`, `MCP_PORT`, `MCP_PATH` 등)은 `TRD.md`의
+  설정 및 보안 절을 기준으로 한다.
   `.env`는 커밋하지 않는다.
 - 자동화 테스트는 NEIS API 키 없이 통과해야 한다. 로컬에서 실제 NEIS 데이터로
   수동 검증할 때만 `.env`의 키를 사용한다.
@@ -118,6 +124,16 @@ python -m pip install -e ".[dev]"
 
 가상 환경을 활성화한 뒤 `pyproject.toml`에 정의된 ASGI 애플리케이션과 개발 서버
 명령으로 실행한다. 모듈 경로나 포트를 추측해서 새 명령을 만들지 않는다.
+
+### MCP 서버
+
+```sh
+cd src/mcp
+python -m pip install -e ".[dev]"
+python -m battle_lunch_mcp.server
+```
+
+MCP 서버는 Streamable HTTP 방식으로 `MCP_PATH`(기본 `/mcp`)에서 동작한다.
 
 ### 전체 애플리케이션
 
@@ -146,7 +162,11 @@ cd ../backend
 python -m pip install -e ".[dev]"
 pytest
 
-cd ..
+cd ../src/mcp
+python -m pip install -e ".[dev]"
+pytest
+
+cd ../..
 docker compose config
 ```
 
@@ -217,6 +237,10 @@ npm run typecheck
 - NEIS가 요청 건수·트래픽 제한 초과로 400 오류를 반환하면 사용자에게 재시도를
   안내하는 명확한 오류로 전달한다. 재시도는 멱등적인 조회에 한해 제한된 횟수와
   지수 백오프로만 적용하고, 입력 오류나 인증 오류에는 재시도하지 않는다.
+- MCP 도구는 `search_schools`와 `get_lunch_menus`를 제공하며 백엔드 HTTP API를
+  경유하지 않고 NEIS 전용 클라이언트로 `data/openapi.json` 계약을 따른다.
+- MCP 도구 오류는 API 키, 전체 요청 URL, 내부 예외나 스택 추적을 포함하지 않는
+  안전한 메시지로 반환한다.
 
 ## 테스트
 
@@ -226,6 +250,7 @@ npm run typecheck
 | 백엔드 단위 | `backend/tests/unit/` | `cd backend && pytest tests/unit` |
 | 백엔드 통합 | `backend/tests/integration/` | `cd backend && pytest tests/integration` |
 | 백엔드 전체 | `backend/tests/` | `cd backend && pytest` |
+| MCP 단위·통합 | `src/mcp/tests/` | `cd src/mcp && pytest` |
 | E2E | `e2e/` | `e2e/package.json` 또는 프로젝트 설정의 테스트 명령 |
 
 - 프론트엔드는 구현 세부 단위 테스트보다 사용자 행동과 API 연동을 검증하는 통합
@@ -233,6 +258,7 @@ npm run typecheck
 - 백엔드 단위 테스트는 외부 I/O 없이 비즈니스 규칙, 날짜 검증과 응답 변환을
   검증한다.
 - 백엔드 통합 테스트는 API 라우팅, 스키마와 NEIS 클라이언트 연결을 검증한다.
+- MCP 테스트는 도구 등록, 도구 호출, 입력 검증, NEIS 파라미터와 오류 매핑을 검증한다.
 - E2E 테스트는 학교 검색, 학교 선택, 날짜 범위 선택, 중식 결과 표시의 핵심 흐름과
   오류 및 빈 결과를 검증한다.
 - 자동화 테스트에서 실제 NEIS 서비스에 접근하지 않는다. HTTP 경계에서 현실적인

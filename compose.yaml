@@ -15,6 +15,24 @@ services:
       timeout: 3s
       retries: 5
 
+  mcp:
+    build:
+      context: ./src/mcp
+    environment:
+      NEIS_API_KEY: ${NEIS_API_KEY:-}
+      NEIS_BASE_URL: ${NEIS_BASE_URL:-https://open.neis.go.kr/hub}
+      NEIS_TIMEOUT_SECONDS: ${NEIS_TIMEOUT_SECONDS:-5}
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8001
+      MCP_PATH: /mcp
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost', 8001), 2); s.close()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   frontend:
     build:
       context: ./frontend
